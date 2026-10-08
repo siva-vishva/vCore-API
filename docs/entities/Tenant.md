@@ -1,0 +1,1202 @@
+# vCore Tenant API Specification
+
+**Document:** Tenant.md  
+**Version:** 1.0  
+**Status:** Approved API Design Baseline  
+**Database:** vCore  
+**Schema:** tenant  
+**Physical Table:** tenant.Tenant  
+**API Version:** v1
+
+---
+
+## 1. Purpose
+
+The Tenant API manages the foundational **Tenant** master entity in vCore.
+
+Tenant is a core vCore master entity and provides the foundation for:
+
+- Tenant Registration
+- Tenant Profile
+- Tenant Status Management
+- Tenant Lifecycle Management
+- Tenant Isolation
+- Tenant Context
+- Tenant Hierarchy
+- Tenant Domain Management
+- Tenant Provisioning
+- Tenant Provisioning History
+- Tenant Usage Tracking
+
+The API is business-capability oriented and must not expose the database table directly.
+
+---
+
+# 2. Ownership
+
+| Item | Definition |
+|---|---|
+| Database | `vCore` |
+| Schema | `tenant` |
+| Table | `tenant.Tenant` |
+| Entity | `Tenant` |
+| Entity Type | Master Entity |
+| API Style | REST / JSON |
+| API Version | `v1` |
+| Primary Key | `TenantId` |
+| Unique Business Key | `TenantCode` |
+| Concurrency | `RowVersion` |
+| Audit Fields | `CreatedAt`, `CreatedBy`, `UpdatedAt`, `UpdatedBy` |
+
+---
+
+# 3. Physical Database Definition
+
+The following is the authoritative physical definition supplied for `tenant.Tenant`.
+
+```sql
+CREATE TABLE [tenant].[Tenant](
+    [TenantId] [uniqueidentifier] NOT NULL,
+    [TenantCode] [varchar](30) NOT NULL,
+    [TenantName] [nvarchar](200) NOT NULL,
+    [Status] [varchar](30) NOT NULL,
+    [TenantType] [varchar](30) NOT NULL,
+    [TimeZone] [varchar](100) NOT NULL,
+    [Locale] [varchar](20) NOT NULL,
+    [CountryCode] [char](2) NOT NULL,
+    [ContactEmail] [nvarchar](320) NOT NULL,
+    [ContactPhone] [varchar](30) NULL,
+    [CreatedAt] [datetime2](3) NOT NULL,
+    [CreatedBy] [uniqueidentifier] NULL,
+    [UpdatedAt] [datetime2](3) NULL,
+    [UpdatedBy] [uniqueidentifier] NULL,
+    [RowVersion] [timestamp] NOT NULL,
+
+    CONSTRAINT [PK_Tenant] PRIMARY KEY CLUSTERED
+    (
+        [TenantId] ASC
+    ),
+
+    CONSTRAINT [UQ_Tenant_TenantCode] UNIQUE NONCLUSTERED
+    (
+        [TenantCode] ASC
+    )
+);
+
+ALTER TABLE [tenant].[Tenant]
+ADD CONSTRAINT [DF_Tenant_CreatedAt]
+DEFAULT (sysutcdatetime()) FOR [CreatedAt];
+
+ALTER TABLE [tenant].[Tenant]
+WITH CHECK ADD CONSTRAINT [CK_Tenant_Status]
+CHECK (
+    [Status] = 'Suspended'
+    OR [Status] = 'Inactive'
+    OR [Status] = 'Active'
+);
+
+ALTER TABLE [tenant].[Tenant]
+WITH CHECK ADD CONSTRAINT [CK_Tenant_TenantType]
+CHECK (
+    [TenantType] = 'Trial'
+    OR [TenantType] = 'Internal'
+    OR [TenantType] = 'Customer'
+);
+```
+
+---
+
+# 4. Entity Field Definition
+
+| # | Column | SQL Type | Null | Key / Constraint | API Meaning |
+|---:|---|---|---|---|---|
+| 1 | `TenantId` | `uniqueidentifier` | No | PK | Unique tenant identifier |
+| 2 | `TenantCode` | `varchar(30)` | No | Unique | Tenant business/code identifier |
+| 3 | `TenantName` | `nvarchar(200)` | No | — | Tenant display/business name |
+| 4 | `Status` | `varchar(30)` | No | CHECK | Tenant operational status |
+| 5 | `TenantType` | `varchar(30)` | No | CHECK | Tenant classification |
+| 6 | `TimeZone` | `varchar(100)` | No | — | Tenant time-zone identifier |
+| 7 | `Locale` | `varchar(20)` | No | — | Tenant locale |
+| 8 | `CountryCode` | `char(2)` | No | — | Tenant country code |
+| 9 | `ContactEmail` | `nvarchar(320)` | No | — | Primary tenant contact email |
+| 10 | `ContactPhone` | `varchar(30)` | Yes | — | Primary tenant contact phone |
+| 11 | `CreatedAt` | `datetime2(3)` | No | Default UTC | Creation timestamp |
+| 12 | `CreatedBy` | `uniqueidentifier` | Yes | — | User/service that created tenant |
+| 13 | `UpdatedAt` | `datetime2(3)` | Yes | — | Last update timestamp |
+| 14 | `UpdatedBy` | `uniqueidentifier` | Yes | — | User/service that last updated tenant |
+| 15 | `RowVersion` | `timestamp` | No | Concurrency | SQL Server optimistic concurrency token |
+
+---
+
+# 5. Keys and Constraints
+
+## 5.1 Primary Key
+
+```text
+PK_Tenant
+TenantId
+```
+
+`TenantId` uniquely identifies a tenant.
+
+The API must expose `TenantId` as the resource identifier.
+
+---
+
+## 5.2 Unique Tenant Code
+
+```text
+UQ_Tenant_TenantCode
+TenantCode
+```
+
+`TenantCode` must be unique across the Tenant table.
+
+A duplicate `TenantCode` must be rejected.
+
+Recommended API error:
+
+```text
+TENANT_CODE_ALREADY_EXISTS
+```
+
+HTTP status:
+
+```text
+409 Conflict
+```
+
+---
+
+## 5.3 Status Constraint
+
+The physical database permits only:
+
+```text
+Active
+Inactive
+Suspended
+```
+
+The API must not introduce additional status values unless the database constraint and approved business specification are changed.
+
+---
+
+## 5.4 Tenant Type Constraint
+
+The physical database permits only:
+
+```text
+Customer
+Internal
+Trial
+```
+
+The API must validate these values before persistence.
+
+---
+
+## 5.5 CreatedAt Default
+
+The database default is:
+
+```sql
+sysutcdatetime()
+```
+
+Therefore `CreatedAt` should normally be generated by the database during creation.
+
+The client must not be allowed to arbitrarily set the creation timestamp.
+
+---
+
+## 5.6 RowVersion
+
+`RowVersion` is a SQL Server `timestamp` column and is used for optimistic concurrency.
+
+The API must not allow clients to modify `RowVersion`.
+
+---
+
+# 6. Tenant Aggregate
+
+`Tenant` is the aggregate root for tenant identity and core lifecycle operations.
+
+The primary aggregate contains the fields of:
+
+```text
+tenant.Tenant
+```
+
+Related tenant capabilities may involve:
+
+```text
+tenant.TenantDomain
+tenant.TenantLifecycleHistory
+tenant.TenantProvisioningHistory
+config.Configuration
+usage.UsageRecord
+```
+
+These related entities should be orchestrated through application services rather than exposing database-table CRUD operations.
+
+---
+
+# 7. API Endpoints
+
+## 7.1 Register Tenant
+
+```http
+POST /api/v1/tenants
+```
+
+### Purpose
+
+Creates a new tenant.
+
+### Request
+
+```json
+{
+  "tenantCode": "ACME",
+  "tenantName": "ACME Corporation",
+  "tenantType": "Customer",
+  "timeZone": "Asia/Kolkata",
+  "locale": "en-IN",
+  "countryCode": "IN",
+  "contactEmail": "admin@acme.example",
+  "contactPhone": "+91XXXXXXXXXX"
+}
+```
+
+### Server-generated fields
+
+The service/database generates:
+
+- `TenantId`
+- `CreatedAt`
+- `RowVersion`
+
+`CreatedBy` is obtained from the authenticated execution context where applicable.
+
+### Initial status
+
+The API must use the approved tenant-registration business rule for the initial status.
+
+The physical database allows `Active`, `Inactive`, and `Suspended`, but the supplied DDL alone does not define which status must be assigned during registration.
+
+Therefore the implementation must not invent that business rule.
+
+---
+
+# 8. Get Tenant
+
+```http
+GET /api/v1/tenants/{tenantId}
+```
+
+Returns the tenant resource.
+
+Example response:
+
+```json
+{
+  "tenantId": "00000000-0000-0000-0000-000000000000",
+  "tenantCode": "ACME",
+  "tenantName": "ACME Corporation",
+  "status": "Active",
+  "tenantType": "Customer",
+  "timeZone": "Asia/Kolkata",
+  "locale": "en-IN",
+  "countryCode": "IN",
+  "contactEmail": "admin@acme.example",
+  "contactPhone": "+91XXXXXXXXXX",
+  "createdAt": "2026-10-07T12:00:00.000Z",
+  "createdBy": "00000000-0000-0000-0000-000000000000",
+  "updatedAt": "2026-10-07T12:30:00.000Z",
+  "updatedBy": "00000000-0000-0000-0000-000000000000",
+  "rowVersion": "AAAAAAAAB9E="
+}
+```
+
+The exact serialization format for `RowVersion` must be standardized in the common API conventions.
+
+---
+
+# 9. List / Search Tenants
+
+```http
+GET /api/v1/tenants
+```
+
+Recommended query capabilities:
+
+```text
+status
+tenantType
+tenantCode
+tenantName
+countryCode
+page
+pageSize
+sort
+```
+
+Example:
+
+```http
+GET /api/v1/tenants?status=Active&tenantType=Customer&page=1&pageSize=25
+```
+
+The API should return a paginated business-oriented response.
+
+---
+
+# 10. Update Tenant
+
+```http
+PUT /api/v1/tenants/{tenantId}
+```
+
+The operation updates mutable tenant profile information.
+
+Typical mutable fields include:
+
+- `TenantName`
+- `TimeZone`
+- `Locale`
+- `CountryCode`
+- `ContactEmail`
+- `ContactPhone`
+
+Whether `TenantCode` and `TenantType` are mutable must be controlled by explicit business rules.
+
+The API must not allow:
+
+- `TenantId`
+- `CreatedAt`
+- `CreatedBy`
+- `RowVersion`
+
+to be arbitrarily modified.
+
+---
+
+# 11. Change Tenant Status
+
+Status changes are business operations and must not be implemented as unrestricted field updates.
+
+Recommended endpoint:
+
+```http
+POST /api/v1/tenants/{tenantId}/status
+```
+
+Request:
+
+```json
+{
+  "status": "Suspended",
+  "rowVersion": "AAAAAAAAB9E="
+}
+```
+
+The service must:
+
+1. Load the tenant.
+2. Validate current state.
+3. Validate requested state.
+4. Validate authorization.
+5. Apply the approved lifecycle transition.
+6. Update audit fields.
+7. Persist lifecycle history where applicable.
+8. Commit the transaction.
+9. Publish the appropriate event.
+
+---
+
+# 12. Provision Tenant
+
+```http
+POST /api/v1/tenants/{tenantId}/provision
+```
+
+Purpose:
+
+- Initiate tenant provisioning.
+- Coordinate tenant-level platform setup.
+- Persist provisioning history.
+- Invoke required infrastructure/application services.
+
+Provisioning must not be implemented as a direct SQL operation from the controller.
+
+---
+
+# 13. Tenant Domains
+
+Tenant domain management is represented by:
+
+```text
+tenant.TenantDomain
+```
+
+Recommended API resource:
+
+```http
+GET    /api/v1/tenants/{tenantId}/domains
+POST   /api/v1/tenants/{tenantId}/domains
+PUT    /api/v1/tenants/{tenantId}/domains/{domainId}
+DELETE /api/v1/tenants/{tenantId}/domains/{domainId}
+```
+
+The exact `TenantDomain` request/response schema must be defined in its own API specification.
+
+---
+
+# 14. Tenant Lifecycle History
+
+Related entity:
+
+```text
+tenant.TenantLifecycleHistory
+```
+
+Recommended endpoint:
+
+```http
+GET /api/v1/tenants/{tenantId}/lifecycle-history
+```
+
+Lifecycle history is audit-oriented and should normally be read-only through the public API.
+
+It should not be directly editable by normal tenant administration operations.
+
+---
+
+# 15. Tenant Provisioning History
+
+Related entity:
+
+```text
+tenant.TenantProvisioningHistory
+```
+
+Recommended endpoint:
+
+```http
+GET /api/v1/tenants/{tenantId}/provisioning-history
+```
+
+Provisioning history should be generated by provisioning operations.
+
+It should not be directly edited by clients.
+
+---
+
+# 16. Validation Rules
+
+## 16.1 TenantId
+
+- Required for resource identification.
+- Must be a valid GUID.
+- Server-generated during creation.
+
+## 16.2 TenantCode
+
+- Required.
+- Maximum length: 30 characters.
+- Must be unique.
+- Must conform to the approved TenantCode format.
+- The supplied SQL does not define a character-pattern CHECK constraint, so the exact format must come from business rules rather than being invented by the API.
+
+## 16.3 TenantName
+
+- Required.
+- Maximum length: 200 characters.
+
+## 16.4 Status
+
+Allowed values:
+
+```text
+Active
+Inactive
+Suspended
+```
+
+## 16.5 TenantType
+
+Allowed values:
+
+```text
+Customer
+Internal
+Trial
+```
+
+## 16.6 TimeZone
+
+- Required.
+- Maximum length: 100 characters.
+- Must represent a supported tenant time-zone identifier according to the platform's approved reference-data policy.
+
+The supplied DDL establishes only the length requirement; it does not define a database CHECK constraint for valid time-zone names.
+
+## 16.7 Locale
+
+- Required.
+- Maximum length: 20 characters.
+
+## 16.8 CountryCode
+
+- Required.
+- Exactly 2 characters at database level.
+- Must conform to the platform's approved country reference data.
+
+## 16.9 ContactEmail
+
+- Required.
+- Maximum length: 320 characters.
+- Must pass the platform's standard email validation.
+
+## 16.10 ContactPhone
+
+- Optional.
+- Maximum length: 30 characters.
+
+---
+
+# 17. Authorization
+
+Tenant APIs must be protected through the vCore IAM authorization model.
+
+Authorization should be capability/permission based.
+
+Potential permission capabilities include:
+
+```text
+Tenant Registration
+Tenant Profile Management
+Tenant Status Management
+Tenant Provisioning
+Tenant Hierarchy Management
+Tenant Domain Management
+Tenant Lifecycle History
+Tenant Provisioning History
+```
+
+The exact permission identifiers must be taken from the approved IAM permission catalogue.
+
+---
+
+# 18. Tenant Isolation
+
+Tenant isolation is a core vCore platform capability.
+
+Rules:
+
+1. Tenant context must be established before tenant-scoped operations.
+2. Tenant-scoped queries must enforce the tenant boundary.
+3. A normal tenant user must not access another tenant's records.
+4. Client-supplied TenantId must not override trusted authenticated tenant context.
+5. Cross-tenant administration requires explicit elevated authorization.
+6. Background jobs and events must carry validated tenant context where the operation is tenant scoped.
+
+---
+
+# 19. Tenant Context
+
+Tenant context must be propagated consistently across:
+
+- API requests
+- User operations
+- Workflows
+- Integrations
+- Background jobs
+- Events
+- Service-to-service calls
+
+The Tenant API is the authoritative source for tenant identity and core tenant information.
+
+---
+
+# 20. Tenant Hierarchy
+
+The vCore feature catalogue identifies Tenant Hierarchy as a supported capability.
+
+However, the supplied physical `tenant.Tenant` DDL does **not contain a `ParentTenantId` column**.
+
+Therefore:
+
+- The current `tenant.Tenant` table does not directly persist a parent-tenant relationship.
+- The Tenant API must not invent or expose a `ParentTenantId` field.
+- If parent/child tenant hierarchy is required, the database model must be extended through an approved schema change or an approved supporting entity.
+
+This is an important design decision and must be resolved before implementing hierarchical tenant operations.
+
+---
+
+# 21. Transaction Boundary
+
+Tenant registration/update/status operations involving only vCore database entities should use the vCore database transaction boundary.
+
+For example:
+
+```text
+Tenant update
+    |
+    +-- tenant.Tenant
+    |
+    +-- tenant.TenantLifecycleHistory
+    |
+    +-- commit
+```
+
+If external systems are involved:
+
+```text
+API
+ |
+Application Service
+ |
+Database Transaction
+ |
+Commit
+ |
+Event / Integration
+ |
+External System
+```
+
+Do not use distributed database transactions across product databases.
+
+---
+
+# 22. Concurrency
+
+The physical table uses:
+
+```sql
+[RowVersion] [timestamp] NOT NULL
+```
+
+The API must implement optimistic concurrency.
+
+Recommended flow:
+
+1. Client retrieves Tenant.
+2. Response contains RowVersion.
+3. Client submits update with the expected RowVersion.
+4. Repository performs concurrency-aware update.
+5. If the row was changed by another transaction, return:
+
+```http
+409 Conflict
+```
+
+Recommended error code:
+
+```text
+TENANT_CONCURRENCY_CONFLICT
+```
+
+The API must never allow the client to directly modify the SQL Server rowversion value.
+
+---
+
+# 23. Audit Fields
+
+The following fields are controlled by the service/database:
+
+```text
+CreatedAt
+CreatedBy
+UpdatedAt
+UpdatedBy
+```
+
+Rules:
+
+- `CreatedAt` is database generated using UTC.
+- `CreatedBy` comes from the authenticated user/service context when applicable.
+- `UpdatedAt` is set during updates.
+- `UpdatedBy` comes from the authenticated user/service context.
+- Clients must not arbitrarily supply audit values.
+
+---
+
+# 24. Delete Policy
+
+Tenant must not be treated as a normal CRUD resource for destructive deletion.
+
+Because Tenant is a foundational platform entity and related lifecycle/provisioning history may exist:
+
+**Preferred operation:**
+
+```text
+Deactivate / Suspend / Retire
+```
+
+rather than physical deletion.
+
+The supplied DDL does not define a deletion rule. Therefore, the final physical deletion policy must be defined in the approved business/retention specification.
+
+Until then, a public `DELETE /tenants/{tenantId}` endpoint should not be implemented.
+
+---
+
+# 25. DTOs
+
+Recommended DTOs:
+
+```text
+CreateTenantRequest
+UpdateTenantRequest
+ChangeTenantStatusRequest
+ProvisionTenantRequest
+TenantResponse
+TenantSummaryResponse
+TenantSearchRequest
+TenantLifecycleHistoryResponse
+TenantProvisioningHistoryResponse
+```
+
+## CreateTenantRequest
+
+```json
+{
+  "tenantCode": "ACME",
+  "tenantName": "ACME Corporation",
+  "tenantType": "Customer",
+  "timeZone": "Asia/Kolkata",
+  "locale": "en-IN",
+  "countryCode": "IN",
+  "contactEmail": "admin@acme.example",
+  "contactPhone": "+91XXXXXXXXXX"
+}
+```
+
+## UpdateTenantRequest
+
+Should contain only approved mutable business fields plus the concurrency token required by the platform API convention.
+
+---
+
+# 26. Domain Model
+
+Suggested domain model:
+
+```text
+Tenant
+ ├── TenantId
+ ├── TenantCode
+ ├── TenantName
+ ├── Status
+ ├── TenantType
+ ├── TimeZone
+ ├── Locale
+ ├── CountryCode
+ ├── ContactEmail
+ ├── ContactPhone
+ └── RowVersion
+```
+
+Domain behavior should include operations such as:
+
+```text
+Activate()
+Suspend()
+Deactivate()
+UpdateProfile()
+```
+
+The exact lifecycle method set must follow the approved status transition rules.
+
+---
+
+# 27. Application Service
+
+Recommended interface:
+
+```csharp
+public interface ITenantService
+{
+    Task<TenantResponse> CreateAsync(
+        CreateTenantRequest request,
+        CancellationToken cancellationToken);
+
+    Task<TenantResponse?> GetByIdAsync(
+        Guid tenantId,
+        CancellationToken cancellationToken);
+
+    Task<PagedResult<TenantSummaryResponse>> SearchAsync(
+        TenantSearchRequest request,
+        CancellationToken cancellationToken);
+
+    Task<TenantResponse> UpdateAsync(
+        Guid tenantId,
+        UpdateTenantRequest request,
+        CancellationToken cancellationToken);
+
+    Task ChangeStatusAsync(
+        Guid tenantId,
+        ChangeTenantStatusRequest request,
+        CancellationToken cancellationToken);
+
+    Task ProvisionAsync(
+        Guid tenantId,
+        ProvisionTenantRequest request,
+        CancellationToken cancellationToken);
+}
+```
+
+This is a design-level contract. Exact implementation should follow the common vCore coding standards.
+
+---
+
+# 28. Repository
+
+The repository is responsible for persistence and database interaction.
+
+Suggested interface:
+
+```csharp
+public interface ITenantRepository
+{
+    Task<Tenant?> GetByIdAsync(
+        Guid tenantId,
+        CancellationToken cancellationToken);
+
+    Task<bool> ExistsByCodeAsync(
+        string tenantCode,
+        CancellationToken cancellationToken);
+
+    Task AddAsync(
+        Tenant tenant,
+        CancellationToken cancellationToken);
+
+    Task UpdateAsync(
+        Tenant tenant,
+        CancellationToken cancellationToken);
+}
+```
+
+The repository must not contain business lifecycle rules.
+
+---
+
+# 29. Controller Responsibilities
+
+The controller must handle:
+
+- Routing
+- HTTP request binding
+- Authentication context
+- Authorization invocation
+- DTO validation
+- Calling the application service
+- HTTP response mapping
+
+The controller must not contain:
+
+- SQL
+- EF Core queries
+- Business rules
+- Tenant lifecycle rules
+- Transaction orchestration
+- Event implementation logic
+
+---
+
+# 30. Error Contract
+
+Recommended Tenant-specific errors:
+
+| Error Code | Condition | HTTP |
+|---|---|---:|
+| `TENANT_NOT_FOUND` | Tenant does not exist | 404 |
+| `TENANT_CODE_ALREADY_EXISTS` | Duplicate TenantCode | 409 |
+| `TENANT_INVALID_STATUS` | Unsupported status | 400 |
+| `TENANT_INVALID_TYPE` | Unsupported TenantType | 400 |
+| `TENANT_INVALID_LIFECYCLE_TRANSITION` | Invalid status transition | 409 |
+| `TENANT_CONCURRENCY_CONFLICT` | RowVersion mismatch | 409 |
+| `TENANT_ACCESS_DENIED` | Tenant isolation/authorization failure | 403 |
+| `TENANT_PROVISIONING_FAILED` | Provisioning operation failed | 422/500 depending on failure type |
+
+These codes must ultimately align with the common vCore error-handling standard.
+
+---
+
+# 31. Events
+
+Potential domain/integration events:
+
+```text
+TenantRegistered
+TenantProfileUpdated
+TenantActivated
+TenantSuspended
+TenantDeactivated
+TenantProvisioningStarted
+TenantProvisioningCompleted
+TenantProvisioningFailed
+```
+
+The exact event catalogue must be standardized before implementation.
+
+Events must be published after successful persistence/transaction commit, preferably using the platform's approved outbox/event mechanism where applicable.
+
+---
+
+# 32. Testing Requirements
+
+## Unit Tests
+
+Test:
+
+- TenantCode validation
+- TenantName validation
+- TenantType validation
+- Status validation
+- Lifecycle transitions
+- Tenant profile rules
+- Tenant isolation rules
+- Authorization policies
+
+## Application Tests
+
+Test:
+
+- Tenant registration
+- Duplicate TenantCode
+- Tenant retrieval
+- Tenant update
+- Status change
+- Provisioning
+- Transaction rollback
+- Concurrency conflict
+
+## Integration Tests
+
+Test:
+
+- SQL persistence
+- PK enforcement
+- Unique TenantCode enforcement
+- Status CHECK constraint
+- TenantType CHECK constraint
+- CreatedAt default
+- RowVersion behavior
+- Audit fields
+
+## API Tests
+
+Test:
+
+- POST `/api/v1/tenants`
+- GET `/api/v1/tenants/{tenantId}`
+- GET `/api/v1/tenants`
+- PUT `/api/v1/tenants/{tenantId}`
+- POST `/api/v1/tenants/{tenantId}/status`
+- POST `/api/v1/tenants/{tenantId}/provision`
+- Authentication
+- Authorization
+- Tenant isolation
+- Error contract
+
+---
+
+# 33. Copilot Implementation Instructions
+
+GitHub Copilot must use this document together with:
+
+```text
+.github/copilot-instructions.md
+docs/architecture/API-Architecture.md
+docs/architecture/API-Conventions.md
+docs/architecture/Security.md
+docs/architecture/Error-Handling.md
+docs/architecture/Validation.md
+docs/architecture/Transactions.md
+docs/architecture/Business-Logic-Guidelines.md
+docs/architecture/Testing.md
+```
+
+Copilot must:
+
+1. Treat `tenant.Tenant` as the authoritative persistence table.
+2. Use the exact physical column names and SQL types.
+3. Never invent database fields.
+4. Never expose EF Core entities directly from controllers.
+5. Use DTOs.
+6. Use application services for use-case orchestration.
+7. Put business rules in the Domain/Application layers.
+8. Keep controllers thin.
+9. Use repository/infrastructure components for persistence.
+10. Implement optimistic concurrency using `RowVersion`.
+11. Enforce TenantCode uniqueness.
+12. Enforce allowed Status values.
+13. Enforce allowed TenantType values.
+14. Respect tenant isolation.
+15. Respect authorization policies.
+16. Generate tests.
+17. Generate OpenAPI documentation.
+18. Do not add `ParentTenantId` because it is not present in the supplied physical table.
+19. Do not implement physical DELETE until an approved deletion policy exists.
+20. Do not invent lifecycle transition rules that are not specified.
+
+---
+
+# 34. EF Core Mapping Considerations
+
+The EF Core model must map to:
+
+```text
+Database: vCore
+Schema: tenant
+Table: Tenant
+```
+
+Important mappings:
+
+| Property | SQL Mapping |
+|---|---|
+| TenantId | uniqueidentifier |
+| TenantCode | varchar(30) |
+| TenantName | nvarchar(200) |
+| Status | varchar(30) |
+| TenantType | varchar(30) |
+| TimeZone | varchar(100) |
+| Locale | varchar(20) |
+| CountryCode | char(2) |
+| ContactEmail | nvarchar(320) |
+| ContactPhone | varchar(30) nullable |
+| CreatedAt | datetime2(3) |
+| CreatedBy | uniqueidentifier nullable |
+| UpdatedAt | datetime2(3) nullable |
+| UpdatedBy | uniqueidentifier nullable |
+| RowVersion | SQL Server rowversion/timestamp |
+
+The model must also represent:
+
+```text
+PK_Tenant
+UQ_Tenant_TenantCode
+CK_Tenant_Status
+CK_Tenant_TenantType
+DF_Tenant_CreatedAt
+```
+
+---
+
+# 35. API-to-Database Mapping
+
+| API Capability | Primary Table | Supporting Tables / Services |
+|---|---|---|
+| Tenant Registration | tenant.Tenant | Lifecycle/Provisioning where required |
+| Tenant Profile | tenant.Tenant | — |
+| Tenant Status Management | tenant.Tenant | TenantLifecycleHistory |
+| Tenant Lifecycle Management | tenant.Tenant | TenantLifecycleHistory |
+| Tenant Isolation | tenant.Tenant | Tenant context/security services |
+| Tenant Context | tenant.Tenant | Runtime tenant-context service |
+| Tenant Hierarchy | tenant.Tenant | Current physical schema does not contain hierarchy FK |
+| Tenant Domain Management | tenant.TenantDomain | Tenant |
+| Tenant Provisioning | tenant.Tenant | TenantProvisioningHistory + provisioning services |
+| Tenant Usage Tracking | tenant.Tenant | usage.UsageRecord |
+
+---
+
+# 36. Important Schema Design Observation
+
+The feature catalogue identifies **Tenant Hierarchy** as a supported feature.
+
+However, the supplied `tenant.Tenant` physical definition contains no explicit parent-tenant foreign key.
+
+Therefore the API design must keep this distinction:
+
+```text
+Feature Catalogue:
+Tenant Hierarchy = Supported capability
+
+Current Physical Schema:
+No ParentTenantId in tenant.Tenant
+```
+
+This must be resolved during the future hierarchy API/database design rather than being silently implemented in code.
+
+---
+
+# 37. Definition of Done
+
+Tenant API is considered implementation-ready when:
+
+- [x] Physical `tenant.Tenant` schema identified
+- [x] PK identified
+- [x] Unique TenantCode constraint identified
+- [x] Status values identified
+- [x] TenantType values identified
+- [x] CreatedAt default identified
+- [x] Audit fields identified
+- [x] RowVersion concurrency identified
+- [x] DTO contract defined
+- [x] API endpoints defined
+- [x] Validation rules defined
+- [x] Authorization approach defined
+- [x] Tenant isolation rules defined
+- [x] Transaction approach defined
+- [x] Error contract defined
+- [x] Testing requirements defined
+- [x] Copilot implementation guidance defined
+- [x] Hierarchy schema gap explicitly identified
+- [ ] Final lifecycle transition matrix approved
+- [ ] Final IAM permission identifiers approved
+- [ ] Common event contract approved
+- [ ] Common pagination/filtering contract approved
+- [ ] Common RowVersion serialization contract approved
+
+---
+
+# 38. Final Design Principle
+
+The Tenant API is a **business capability API**, not a CRUD wrapper around `tenant.Tenant`.
+
+The intended architecture is:
+
+```text
+Client
+  |
+  v
+TenantController
+  |
+  v
+TenantApplicationService
+  |
+  +--> Tenant Domain Rules
+  |
+  +--> TenantRepository
+  |       |
+  |       v
+  |   tenant.Tenant
+  |
+  +--> TenantLifecycleHistory
+  |
+  +--> TenantProvisioningHistory
+  |
+  +--> Events / Integration
+```
+
+The implementation must preserve the separation:
+
+```text
+Controller
+    ↓
+Application
+    ↓
+Domain
+    ↓
+Repository
+    ↓
+Database
+```
+
+This specification is the baseline for generating the Tenant API using the vCore API architecture and GitHub Copilot.
