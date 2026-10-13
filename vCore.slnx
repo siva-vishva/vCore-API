@@ -1,0 +1,8 @@
+<Solution>
+  <Project Path="vCore.Api/vCore.Api.csproj" />
+  <Project Path="vCore.Application/vCore.Application.csproj" />
+  <Project Path="vCore.Domain/vCore.Domain.csproj" />
+  <Project Path="vCore.Infrastructure/vCore.Infrastructure.csproj" />
+  <Project Path="vCore.Tests.Integration/vCore.Tests.Integration.csproj" />
+  <Project Path="vCore.Tests.Unit/vCore.Tests.Unit.csproj" />
+</Solution>

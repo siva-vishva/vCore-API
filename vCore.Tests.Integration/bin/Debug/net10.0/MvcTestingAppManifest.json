@@ -1,0 +1,6 @@
+{
+  "vCore.Api, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null": "F:\\07-learning-vSuite\\Working_Version\\vCore-API\\vCore.Api",
+  "vCore.Application, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null": "F:\\07-learning-vSuite\\Working_Version\\vCore-API\\vCore.Application",
+  "vCore.Domain, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null": "F:\\07-learning-vSuite\\Working_Version\\vCore-API\\vCore.Domain",
+  "vCore.Infrastructure, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null": "F:\\07-learning-vSuite\\Working_Version\\vCore-API\\vCore.Infrastructure"
+}

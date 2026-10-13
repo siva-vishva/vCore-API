@@ -1,0 +1,12 @@
+F:\07-learning-vSuite\Working_Version\vCore-API\vCore.Domain\bin\Debug\net10.0\vCore.Domain.deps.json
+F:\07-learning-vSuite\Working_Version\vCore-API\vCore.Domain\bin\Debug\net10.0\vCore.Domain.dll
+F:\07-learning-vSuite\Working_Version\vCore-API\vCore.Domain\bin\Debug\net10.0\vCore.Domain.pdb
+F:\07-learning-vSuite\Working_Version\vCore-API\vCore.Domain\obj\Debug\net10.0\vCore.Domain.GeneratedMSBuildEditorConfig.editorconfig
+F:\07-learning-vSuite\Working_Version\vCore-API\vCore.Domain\obj\Debug\net10.0\vCore.Domain.AssemblyInfoInputs.cache
+F:\07-learning-vSuite\Working_Version\vCore-API\vCore.Domain\obj\Debug\net10.0\vCore.Domain.AssemblyInfo.cs
+F:\07-learning-vSuite\Working_Version\vCore-API\vCore.Domain\obj\Debug\net10.0\vCore.Domain.csproj.CoreCompileInputs.cache
+F:\07-learning-vSuite\Working_Version\vCore-API\vCore.Domain\obj\Debug\net10.0\vCore.Domain.sourcelink.json
+F:\07-learning-vSuite\Working_Version\vCore-API\vCore.Domain\obj\Debug\net10.0\vCore.Domain.dll
+F:\07-learning-vSuite\Working_Version\vCore-API\vCore.Domain\obj\Debug\net10.0\refint\vCore.Domain.dll
+F:\07-learning-vSuite\Working_Version\vCore-API\vCore.Domain\obj\Debug\net10.0\vCore.Domain.pdb
+F:\07-learning-vSuite\Working_Version\vCore-API\vCore.Domain\obj\Debug\net10.0\ref\vCore.Domain.dll
